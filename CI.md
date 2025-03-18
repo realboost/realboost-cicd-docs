@@ -418,77 +418,444 @@ gh pr merge feature/user-auth \
 5. Keep one significant change per PR for clear version bumping
 6. Document version bumps in PR descriptions
 
-### GitHub CLI Commit and PR Examples
-
-Use GitHub CLI to streamline commits and PR creation with semantic commit messages and labeling, integrating with the semantic versioning action:
-
-**Commit and Push Changes:**
-```bash
-git checkout -b feature/123-improve-ui
-git add .
-git commit -m "feat: add responsive navbar component"
-git push origin feature/123-improve-ui
-```
-
-**Create a PR with labels using GitHub CLI:**
-```bash
-gh pr create --title "feat: improve UI responsiveness (#123)" --body "Implements responsive layout improvements \n\nCloses #123" --label minor,feature
-```
-
-To ensure semantic tags trigger version increments properly, PR labels should align clearly:
-- Use `major` for breaking changes (`BREAKING CHANGE` or `feat!`)
-- Use `minor` for new features (`feat`)
-- Use `patch` for fixes, chores, docs, and refactors
-
 ### Workflow 3: Publish to Artifactory
 
-Trigger: Release published
+#### 3.1 UX Artifact Publishing
 
-Tasks:
-- **Mandatory**: Package and publish artifacts to Artifactory, making them available for deployment via ArgoCD.
-- **Optional**: Notify stakeholders or trigger subsequent deployment workflows.
-
-Example:
 ```yaml
-# File: .github/workflows/publish-to-artifactory.yaml
-name: Publish to Artifactory
+# File: .github/workflows/publish-ux-to-artifactory.yaml
+name: Publish UX to Artifactory
 
 on:
   release:
     types: [published]
 
 jobs:
-  publish:
+  publish-ux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
+      # Setup Node.js for UX build
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
+          
+      # Build UX application
+      - name: Build UX
+        run: |
+          npm ci
+          npm run build
+          
+      # Package UX into versioned zip
+      - name: Package UX
+        run: |
+          cd dist
+          zip -r ../ux-${{ github.event.release.tag_name }}.zip .
+          cd ..
+          
+      # Setup JFrog CLI
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v4
         env:
           JF_URL: ${{ secrets.JF_URL }}
           JF_USER: ${{ secrets.JF_USER }}
           JF_PASSWORD: ${{ secrets.JF_PASSWORD }}
-      - name: Build and Publish Artifacts
+          
+      # Publish UX zip to Artifactory
+      - name: Publish UX to Artifactory
         run: |
-          jf rt ping
-          jfrog rt build-docker-create my-app:${{ github.event.release.tag_name }} --build-name=my-app
-          jf rt docker-push my-app:${{ github.event.release.tag_name }} docker-local
-          jf rt build-publish
+          # Create artifact metadata
+          cat << EOF > artifact-props.json
+          {
+            "version": "${{ github.event.release.tag_name }}",
+            "build.number": "${{ github.run_number }}",
+            "vcs.revision": "${{ github.sha }}",
+            "build.timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "build.url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          }
+          EOF
+          
+          # Upload UX zip with properties
+          jf rt upload \
+            --props-file=artifact-props.json \
+            "ux-${{ github.event.release.tag_name }}.zip" \
+            "frontend-local/ux/release-${{ github.event.release.tag_name }}/"
+            
+      # Create deployment manifest
+      - name: Generate Deployment Manifest
+        run: |
+          cat << EOF > ux-version.yaml
+          version: ${{ github.event.release.tag_name }}
+          artifactPath: frontend-local/ux/release-${{ github.event.release.tag_name }}/ux-${{ github.event.release.tag_name }}.zip
+          buildNumber: ${{ github.run_number }}
+          gitCommit: ${{ github.sha }}
+          buildTimestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          EOF
+          
+          # Upload version manifest
+          jf rt upload \
+            ux-version.yaml \
+            "frontend-local/ux/release-${{ github.event.release.tag_name }}/manifest.yaml"
 ```
+
+#### 3.2 API Artifact Publishing
+
+```yaml
+# File: .github/workflows/publish-api-to-artifactory.yaml
+name: Publish API to Artifactory
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Login to Docker registry
+      - name: Login to Artifactory Docker Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.DOCKER_REGISTRY }}
+          username: ${{ secrets.JF_USER }}
+          password: ${{ secrets.JF_PASSWORD }}
+          
+      # Set up Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+          
+      # Build and push API Docker image
+      - name: Build and Push API Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_REGISTRY }}/api:${{ github.event.release.tag_name }}
+            ${{ secrets.DOCKER_REGISTRY }}/api:latest
+          cache-from: type=registry,ref=${{ secrets.DOCKER_REGISTRY }}/api:buildcache
+          cache-to: type=registry,ref=${{ secrets.DOCKER_REGISTRY }}/api:buildcache,mode=max
+          
+      # Setup JFrog CLI
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v4
+        env:
+          JF_URL: ${{ secrets.JF_URL }}
+          JF_USER: ${{ secrets.JF_USER }}
+          JF_PASSWORD: ${{ secrets.JF_PASSWORD }}
+          
+      # Create API version manifest
+      - name: Generate API Version Manifest
+        run: |
+          cat << EOF > api-version.yaml
+          version: ${{ github.event.release.tag_name }}
+          image: ${{ secrets.DOCKER_REGISTRY }}/api:${{ github.event.release.tag_name }}
+          buildNumber: ${{ github.run_number }}
+          gitCommit: ${{ github.sha }}
+          buildTimestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          EOF
+          
+          # Upload version manifest
+          jf rt upload \
+            api-version.yaml \
+            "docker-local/api/release-${{ github.event.release.tag_name }}/manifest.yaml"
+```
+
+#### Directory Structure in Artifactory
+
+```plaintext
+artifactory/
+├── docker-local/                    # API artifacts
+│   └── api/
+│       ├── release-v1.2.3/
+│       │   ├── manifest.yaml        # API version metadata
+│       │   └── image-manifest.json  # Docker image manifest
+│       └── latest/
+└── frontend-local/                  # UX artifacts
+    └── ux/
+        └── release-v1.2.3/
+            ├── ux-v1.2.3.zip       # UX bundle
+            └── manifest.yaml        # UX version metadata
+```
+
+#### Retrieving Artifacts
+
+For UX deployments:
+```bash
+# Download UX manifest to check version info
+jf rt download "frontend-local/ux/release-v1.2.3/manifest.yaml" ./
+
+# Download UX bundle
+jf rt download "frontend-local/ux/release-v1.2.3/ux-v1.2.3.zip" ./
+```
+
+For API deployments:
+```bash
+# Download API manifest to check version info
+jf rt download "docker-local/api/release-v1.2.3/manifest.yaml" ./
+
+# Pull API Docker image
+docker pull $DOCKER_REGISTRY/api:v1.2.3
+```
+
+#### Benefits of Separation
+
+1. **Independent Versioning**
+   - UX and API can be versioned independently
+   - Allows for different release cycles
+   - Supports independent rollbacks
+
+2. **Simplified CI/CD**
+   - Smaller, focused workflows
+   - Faster builds and deployments
+   - Reduced pipeline complexity
+
+3. **Clear Separation of Concerns**
+   - Each repository has its own workflow
+   - Separate teams can manage their own releases
+   - Independent scaling of build resources
+
+4. **Enhanced Traceability**
+   - Separate manifests for each component
+   - Clear artifact lineage
+   - Independent audit trails
+
+5. **Flexible Deployment**
+   - Deploy UX changes without API updates
+   - Roll back API without affecting UX
+   - Mix and match versions as needed
 
 ### Integration with Continuous Delivery (CD)
 
-These CI workflows integrate directly into the Continuous Delivery process using ArgoCD and GitOps principles. After artifacts are published to Artifactory, ArgoCD automatically monitors repository changes defined in your GitOps repository structure, triggering deployments to Kubernetes-based environments:
+These CI workflows integrate directly into the Continuous Delivery process using ArgoCD and GitOps principles. After artifacts are published to Artifactory, ArgoCD automatically monitors repository changes defined in your GitOps repository structure, triggering deployments to Kubernetes-based environments.
 
-- **Kustomize and Helm** are utilized to customize deployments for development and QA environments.
-- **Azure Blob Storage** handles direct deployments for UX zip artifacts using ArgoCD Workflow Templates.
-- Separate ApplicationSets ensure independent and manageable deployments for API and UX components.
+#### GitOps Repository Structure
 
-### Best Practices for CI/CD Integration
+```plaintext
+gitops-repo/
+├── base/                           # Base configurations
+│   ├── api/                       # API component base
+│   │   ├── deployment.yaml
+│   │   ├── service.yaml
+│   │   └── kustomization.yaml
+│   └── ui/                        # UI component base
+│       ├── deployment.yaml
+│       ├── service.yaml
+│       └── kustomization.yaml
+│
+├── environments/
+│   ├── dev/                       # Development environment
+│   │   ├── api/
+│   │   │   ├── kustomization.yaml
+│   │   │   └── env-values.yaml
+│   │   └── ui/
+│   │       ├── kustomization.yaml
+│   │       └── env-values.yaml
+│   │
+│   ├── qa/                        # QA environment
+│   │   ├── api/
+│   │   │   ├── kustomization.yaml
+│   │   │   └── env-values.yaml
+│   │   └── ui/
+│   │       ├── kustomization.yaml
+│   │       └── env-values.yaml
+│   │
+│   ├── uat/                       # UAT environment
+│   │   ├── api/
+│   │   │   ├── kustomization.yaml
+│   │   │   ├── env-values.yaml
+│   │   │   └── scaling.yaml
+│   │   └── ui/
+│   │       ├── kustomization.yaml
+│   │       ├── env-values.yaml
+│   │       └── cdn-config.yaml
+│   │
+│   └── prod/                      # Production environment
+│       ├── api/
+│       │   ├── kustomization.yaml
+│       │   ├── env-values.yaml
+│       │   ├── scaling.yaml
+│       │   └── hpa.yaml
+│       └── ui/
+│           ├── kustomization.yaml
+│           ├── env-values.yaml
+│           ├── cdn-config.yaml
+│           └── ssl-config.yaml
+│
+└── argocd/                        # ArgoCD ApplicationSets
+    ├── api-appset.yaml           # API deployment configuration
+    ├── ui-appset.yaml            # UI deployment configuration
+    └── promotion-workflow.yaml    # Promotion workflow definition
+```
 
-- Maintain modular workflows to isolate tasks.
-- Clearly document and comment workflows for ease of maintenance and onboarding.
-- Utilize marketplace actions for rapid implementation and reliability.
+#### Environment-Specific Configurations
+
+1. **Development (Dev)**
+   - Automatic deployments from `main` branch
+   - Minimal resource requests/limits
+   - Debug logging enabled
+   - No SSL requirement
+   ```yaml
+   # environments/dev/api/env-values.yaml
+   resources:
+     requests:
+       memory: "256Mi"
+       cpu: "100m"
+     limits:
+       memory: "512Mi"
+       cpu: "200m"
+   logging:
+     level: debug
+   ```
+
+2. **Quality Assurance (QA)**
+   - Deployment on release candidates
+   - Moderate resource allocation
+   - Test data integration
+   ```yaml
+   # environments/qa/api/env-values.yaml
+   resources:
+     requests:
+       memory: "512Mi"
+       cpu: "200m"
+     limits:
+       memory: "1Gi"
+       cpu: "500m"
+   testing:
+     dataSet: "qa-dataset"
+   ```
+
+3. **User Acceptance Testing (UAT)**
+   - Production-like environment
+   - Manual promotion required
+   - Enhanced monitoring
+   ```yaml
+   # environments/uat/api/env-values.yaml
+   resources:
+     requests:
+       memory: "1Gi"
+       cpu: "500m"
+     limits:
+       memory: "2Gi"
+       cpu: "1000m"
+   monitoring:
+     enabled: true
+     detailedMetrics: true
+   ```
+
+4. **Production (Prod)**
+   - Manual promotion required
+   - High availability configuration
+   - Auto-scaling enabled
+   - Enhanced security measures
+   ```yaml
+   # environments/prod/api/env-values.yaml
+   resources:
+     requests:
+       memory: "2Gi"
+       cpu: "1000m"
+     limits:
+       memory: "4Gi"
+       cpu: "2000m"
+   security:
+     networkPolicies: true
+     podSecurityPolicies: true
+   highAvailability:
+     enabled: true
+     minReplicas: 3
+   ```
+
+#### Promotion Workflow
+
+```yaml
+# argocd/promotion-workflow.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  name: promotion-workflow
+spec:
+  templates:
+    - name: promote-to-uat
+      steps:
+        - name: validate-qa
+            template: validate-environment
+            arguments:
+              parameters:
+                - name: env
+                  value: qa
+        - name: deploy-uat
+            template: deploy-environment
+            arguments:
+              parameters:
+                - name: env
+                  value: uat
+
+    - name: promote-to-prod
+      steps:
+        - name: validate-uat
+            template: validate-environment
+            arguments:
+              parameters:
+                - name: env
+                  value: uat
+        - name: deploy-prod
+            template: deploy-environment
+            arguments:
+              parameters:
+                - name: env
+                  value: prod
+```
+
+#### Deployment Strategy
+
+1. **Development**
+   - Automatic deployment from `main`
+   - Rolling updates
+   - No approval required
+
+2. **QA**
+   - Deploys from release candidates
+   - Automated testing gates
+   - QA team approval required
+
+3. **UAT**
+   - Manual promotion from QA
+   - Full regression testing
+   - Business stakeholder approval required
+
+4. **Production**
+   - Manual promotion from UAT
+   - Change advisory board approval
+   - Scheduled deployment windows
+   - Blue-green deployment strategy
+
+#### Best Practices for Multi-Environment GitOps
+
+1. **Configuration Management**
+   - Use Kustomize for environment-specific changes
+   - Maintain secrets in HashiCorp Vault or similar
+   - Version all configuration changes
+
+2. **Promotion Process**
+   - Implement clear promotion criteria
+   - Automate validation checks
+   - Maintain audit trails for promotions
+
+3. **Security Measures**
+   - Increase security controls progressively
+   - Implement different service accounts per environment
+   - Use network policies to isolate environments
+
+4. **Monitoring and Observability**
+   - Configure graduated monitoring levels
+   - Implement environment-specific alerts
+   - Maintain separate logging streams
 
 Following this strategic integration of GitHub Actions with ArgoCD, GitOps, Artifactory, and Azure ensures a robust, scalable, and efficient CI/CD pipeline.
 

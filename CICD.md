@@ -4,20 +4,70 @@
 
 ### **Overview**
 
-This document outlines the continuous delivery approach for deploying a collection of bugs and features into the development environment and selectively promoting them to the QA environment using ArgoCD, GitOps principles, and semantic versioning. The artifacts include APIs (containerized) and UX zip files deployed directly to Azure Storage.
+This section of the document outlines the continuous delivery approach for deploying a collection of bugs and features into the development environment and selectively promoting them to the QA environment using ArgoCD, GitOps principles, and semantic versioning. The artifacts include APIs (containerized) and UX zip files deployed directly to Azure Storage.
+
+Our approach leverages GitOps principles to ensure that the desired state of our applications is always defined in Git repositories. This enables automated deployments, version control of configurations, and easy rollbacks when needed. The semantic versioning strategy helps maintain clear tracking of changes and facilitates controlled promotions between environments.
 
 ### **Key Technologies**
-- **ArgoCD**: Continuous delivery tool for Kubernetes using GitOps.
-- **GitHub Actions**: CI pipeline to build and tag artifacts.
-- **Azure DevOps (ADO)**: Agile tracking and planning.
-- **Artifactory**: Artifact repository for storing container images and zip files.
-- **Kustomize**: Kubernetes resource customization.
-- **Helm**: Kubernetes package manager for deploying API containers.
-- **Azure Blob Storage**: Direct deployment of UX zip files.
+- **ArgoCD**: Continuous delivery tool for Kubernetes using GitOps. ArgoCD monitors our Git repositories and automatically syncs the desired state with the actual state in our Kubernetes clusters. It provides a declarative way to define application configurations and handles reconciliation.
+
+- **GitHub Actions**: CI pipeline to build and tag artifacts. Automates the build process, runs tests, and creates versioned artifacts that are ready for deployment. The pipeline is triggered on code changes and ensures consistent build practices.
+
+- **Azure DevOps (ADO)**: Agile tracking and planning. Provides comprehensive project management capabilities, including work item tracking, sprint planning, and integration with our development workflow.
+
+- **Artifactory**: Artifact repository for storing container images and zip files. Acts as a secure, centralized location for all our build artifacts, supporting version control and access management.
+
+- **Kustomize**: Kubernetes resource customization. Allows us to maintain environment-specific configurations while keeping base configurations DRY (Don't Repeat Yourself).
+
+- **Helm**: Kubernetes package manager for deploying API containers. Provides templating and packaging capabilities for complex Kubernetes applications, making deployments more manageable.
+
+- **Azure Blob Storage**: Direct deployment of UX zip files. Offers a scalable solution for storing and serving static web content, with built-in CDN capabilities for improved performance.
 
 ---
 
 ### **GitOps Repository Structure**
+The GitOps repository structure follows key organizational principles to enable clear separation of concerns, environment-specific configurations, and maintainable infrastructure as code:
+
+1. **Separation by Application Type (`api-apps` vs `ux-apps`)**
+   - APIs and UX applications have different deployment patterns and requirements
+   - APIs are deployed as containers to Kubernetes while UX files go to Azure Storage
+   - This separation allows for specialized deployment configurations and workflows
+
+2. **Application-Specific Directories**
+   - Each application (e.g., `catalog-api`, `home-page-ux`) has its own directory
+   - Contains all configurations needed to deploy that specific application
+   - Enables independent versioning and deployment of each application
+
+3. **Base/Overlay Pattern**
+   - The `base` directory contains the common configuration shared across environments
+   - `overlays` directory contains environment-specific customizations (dev/qa)
+   - Uses Kustomize to merge base configs with environment-specific changes
+   - Reduces duplication while maintaining environment differences
+
+4. **ApplicationSets Directory**
+   - Contains ArgoCD ApplicationSet definitions
+   - Separate ApplicationSets for APIs and UX deployments
+   - Enables automated application creation and management
+   - Provides scalable way to handle multiple applications and environments
+
+This structure supports GitOps principles by:
+- Maintaining all configurations in version control
+- Providing clear separation between environments
+- Enabling easy rollbacks and version tracking
+- Supporting declarative infrastructure management
+
+
+### **Understanding Kustomize, Overlays, and ApplicationSets**
+
+#### Kustomize
+Kustomize is a powerful configuration management tool for Kubernetes that allows you to customize application configurations without modifying the original YAML files. Key benefits include:
+
+- **Base/Overlay Pattern**: Maintain a base configuration and create variants (overlays) for different environments
+- **No Templates**: Uses pure Kubernetes YAML files without the need for templating language
+- **Composable**: Can combine and layer multiple configurations
+- **Built into kubectl**: Native support in Kubernetes CLI with `kubectl apply -k`
+
+For example, you can have a base deployment.yaml:
 
 ```plaintext
 └── gitops-repo
@@ -51,6 +101,9 @@ This document outlines the continuous delivery approach for deploying a collecti
 ---
 
 ### **Kustomization Config for API (Development and QA Overlays)**
+
+
+
 
 **Development Overlay** (`api-apps/catalog-api/overlays/dev/kustomization.yaml`):
 
