@@ -149,9 +149,9 @@ Use Release Drafter to automate GitHub Releases:
 
 First, create the release drafter configuration:
 
+```yaml:.github/release-drafter.yml
 # File: .github/release-drafter.yml
 
-```yaml:.github/release-drafter.yml
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 categories:
