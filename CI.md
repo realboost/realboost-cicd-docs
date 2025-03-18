@@ -57,6 +57,7 @@ Example workflow sequence:
 
 
 
+
 #### Workflow 1: Validate PR
 
 Trigger: Pull requests created against `main`
@@ -102,6 +103,8 @@ Use Release Drafter to automate GitHub Releases:
 `https://github.com/release-drafter/release-drafter`
 
 First, create the release drafter configuration:
+
+# File: .github/release-drafter.yml
 
 ```yaml:.github/release-drafter.yml
 name-template: 'v$RESOLVED_VERSION'
@@ -630,6 +633,52 @@ docker pull $DOCKER_REGISTRY/api:v1.2.3
    - Deploy UX changes without API updates
    - Roll back API without affecting UX
    - Mix and match versions as needed
+
+### 
+
+#### Workflow 3: Deploy to Development
+
+Trigger: Push to `main`
+
+Tasks:
+- **Mandatory**: Deploy artifacts directly to the development environment
+- **Optional**: Run tests against the deployed artifacts
+
+Use GitHub Actions to automate the deployment:
+```yaml:.github/workflows/deploy-to-dev.yml
+name: Deploy to Development
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Deploy to Development
+      run: |
+        # Add deployment commands here
+        # Example: kubectl apply -f deployment.yaml
+        # Example: az storage blob upload --account-name your-storage-account --container-name your-container-name --name destination-filename.zip --file /path/to/your/source.zip
+```
+
+This workflow provides fast continuous integration for engineering. GitOps will only be used for moving code from development to QA environment.
+
+To deploy a UX zip file to a storage account, use the following command:
+```bash
+az storage blob upload --account-name your-storage-account --container-name your-container-name --name destination-filename.zip --file /path/to/your/source.zip
+```
+Replace `your-storage-account`, `your-container-name`, `destination-filename.zip`, and `/path/to/your/source.zip` with your actual storage account, container, file name, and local file path.
+
+```markdown
+> **Note**: This can be discussed as a team if we add in GitOps here, my suggestion for tactical delivery is we deploy straing to dev for speed of testing once the code is merged to main, code is only move through environments through git ops
+```
+
 
 ### Integration with Continuous Delivery (CD)
 

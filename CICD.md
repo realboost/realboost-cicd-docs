@@ -69,6 +69,11 @@ Kustomize is a powerful configuration management tool for Kubernetes that allows
 
 For example, you can have a base deployment.yaml:
 
+```markdown
+> **Note**: Decide if we structure the repo by environment first and api and ux second ? 
+```
+
+
 ```plaintext
 └── gitops-repo
     ├── api-apps
