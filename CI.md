@@ -4,6 +4,27 @@
 
 The following outlines a structured yet flexible approach to organizing and managing changes and releases in a GitHub repository using GitHub Actions. This strategy ensures clean merges, reliable builds, automated versioning, and streamlined deployments, aligning seamlessly with Continuous Delivery (CD) processes managed by ArgoCD, GitOps, Artifactory, and Azure Storage.
 
+### **Key Technologies**
+
+
+The following technologies will be used in creation of this continuous integration and delivery approach:
+
+- **ArgoCD**: Continuous delivery tool for Kubernetes using GitOps. ArgoCD monitors our Git repositories and automatically syncs the desired state with the actual state in our Kubernetes clusters. It provides a declarative way to define application configurations and handles reconciliation.
+
+- **GitHub Actions**: CI pipeline to build and tag artifacts. Automates the build process, runs tests, and creates versioned artifacts that are ready for deployment. The pipeline is triggered on code changes and ensures consistent build practices.
+
+- **Azure DevOps (ADO)**: Agile tracking and planning. Provides comprehensive project management capabilities, including work item tracking, sprint planning, and integration with our development workflow.
+
+- **SonarQube**: Code quality and security analysis tool. Provides detailed reports on code quality, security vulnerabilities, and bugs. It can be integrated into the CI pipeline to ensure that only high-quality, secure code is deployed.
+
+- **Artifactory**: Artifact repository for storing container images and zip files. Acts as a secure, centralized location for all our build artifacts, supporting version control and access management.
+
+- **Kustomize**: Kubernetes resource customization. Allows us to maintain environment-specific configurations while keeping base configurations DRY (Don't Repeat Yourself).
+
+- **Helm**: Kubernetes package manager for deploying API containers. Provides templating and packaging capabilities for complex Kubernetes applications, making deployments more manageable.
+
+- **Azure Blob Storage**: Direct deployment of UX zip files. Offers a scalable solution for storing and serving static web content, with built-in CDN capabilities for improved performance.
+
 ### Branch and PR Management
 
 - **Branch Protection**: Enable branch protection rules on the `main` branch requiring pull requests (PRs) to merge. This prevents direct pushes to `main`.
@@ -55,7 +76,31 @@ git checkout -b feature/123-new-feature
 
 Example workflow sequence:
 
+The following summarises the 4 workflows that will be added to every repository.
 
+1. **Validate PR Workflow**
+   - Trigger: Pull requests created against `main`
+   - Tasks:
+     - **Mandatory**: Validate packaging logic (build artifacts, container images).
+     - **Mandatory**: Run tests, static analysis, security checks.
+
+2. **Automated Semantic Release Workflow**
+   - Trigger: Push to `main`
+   - Tasks:
+     - **Mandatory**: Create releases based on semantic commit messages and PR labels.
+     - **Optional**: Automatically update version numbers.
+
+3. **Package and Artifact Workflow**
+   - Trigger: Push to `main`
+   - Tasks:
+     - **Mandatory**: Build and publish artifacts.
+     - **Optional**: Update deployment manifests.
+
+4. **Deploy to Development Workflow**
+   - Trigger: Push to `main`
+   - Tasks:
+     - **Mandatory**: Deploy artifacts directly to the development environment
+     - **Optional**: Run tests against the deployed artifacts
 
 
 #### Workflow 1: Validate PR

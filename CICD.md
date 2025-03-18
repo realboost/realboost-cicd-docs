@@ -8,23 +8,6 @@ This section of the document outlines the continuous delivery approach for deplo
 
 Our approach leverages GitOps principles to ensure that the desired state of our applications is always defined in Git repositories. This enables automated deployments, version control of configurations, and easy rollbacks when needed. The semantic versioning strategy helps maintain clear tracking of changes and facilitates controlled promotions between environments.
 
-### **Key Technologies**
-- **ArgoCD**: Continuous delivery tool for Kubernetes using GitOps. ArgoCD monitors our Git repositories and automatically syncs the desired state with the actual state in our Kubernetes clusters. It provides a declarative way to define application configurations and handles reconciliation.
-
-- **GitHub Actions**: CI pipeline to build and tag artifacts. Automates the build process, runs tests, and creates versioned artifacts that are ready for deployment. The pipeline is triggered on code changes and ensures consistent build practices.
-
-- **Azure DevOps (ADO)**: Agile tracking and planning. Provides comprehensive project management capabilities, including work item tracking, sprint planning, and integration with our development workflow.
-
-- **Artifactory**: Artifact repository for storing container images and zip files. Acts as a secure, centralized location for all our build artifacts, supporting version control and access management.
-
-- **Kustomize**: Kubernetes resource customization. Allows us to maintain environment-specific configurations while keeping base configurations DRY (Don't Repeat Yourself).
-
-- **Helm**: Kubernetes package manager for deploying API containers. Provides templating and packaging capabilities for complex Kubernetes applications, making deployments more manageable.
-
-- **Azure Blob Storage**: Direct deployment of UX zip files. Offers a scalable solution for storing and serving static web content, with built-in CDN capabilities for improved performance.
-
----
-
 ### **GitOps Repository Structure**
 The GitOps repository structure follows key organizational principles to enable clear separation of concerns, environment-specific configurations, and maintainable infrastructure as code:
 
@@ -72,7 +55,6 @@ For example, you can have a base deployment.yaml:
 ```markdown
 > **Note**: Decide if we structure the repo by environment first and api and ux second ? 
 ```
-
 
 ```plaintext
 └── gitops-repo
